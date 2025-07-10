@@ -1,0 +1,4 @@
+del historial de fallas.
+La comunicación 
+permite el reinicio 
+remoto.
