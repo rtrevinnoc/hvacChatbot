@@ -29,6 +29,7 @@ import os
 
 account_sid = os.getenv("TWILIO_SID")
 auth_token = os.getenv("TWILIO_TOKEN")
+debug = os.getenv("DEBUG", "false").lower() in ("1", "true", "yes", "on")
 client = Client(account_sid, auth_token)
 
 class ARORAGSystem:
@@ -461,7 +462,7 @@ Respuesta:"""
 
 def main():
     print("Running HVAC WhatsApp chatbot on Twilio webhook...")
-    app.run(host="0.0.0.0", port=3000, debug=True)
+    app.run(host="0.0.0.0", port=3000, debug=debug)
 
 
 app = Flask(__name__)
