@@ -1,15 +1,16 @@
 #!/usr/bin/env python3
 """
-HVAC RAG System - Improved with Better Models
-A WhatsApp chatbot for HVAC/refrigeration queries using better language models
+ARO (Azure Red Hat OpenShift) RAG System - Terminal Version
+A command-line interface for querying ARO documentation using RAG (Retrieval-Augmented Generation)
 """
 
 import os
 import sys
+import wget
 import torch
 import re
 from typing import List, Any, Dict, Tuple
-from transformers import AutoTokenizer, AutoModelForCausalLM, pipeline, BitsAndBytesConfig
+from transformers import AutoTokenizer, AutoModelForCausalLM, pipeline
 from langchain_huggingface import HuggingFacePipeline, HuggingFaceEmbeddings
 from langchain_community.vectorstores import FAISS
 from langchain.chains import RetrievalQA
@@ -24,14 +25,15 @@ from twilio.rest import Client
 
 from dotenv import load_dotenv
 load_dotenv()
+import os
 
 account_sid = os.getenv("TWILIO_SID")
 auth_token = os.getenv("TWILIO_TOKEN")
 debug = os.getenv("DEBUG", "false").lower() in ("1", "true", "yes", "on")
 client = Client(account_sid, auth_token)
 
-class HVACRAGSystem:
-    """Improved HVAC RAG System with better models"""
+class ARORAGSystem:
+    """ARO RAG System for terminal-based querying"""
     
     def __init__(self):
         self.qa_chain = None
@@ -39,9 +41,24 @@ class HVACRAGSystem:
         self.llm = None
         self.chunk_dir = "chunks"
         self.index_path = "vectorstore_index"
-        self.device = "cuda" if torch.cuda.is_available() else "cpu"
-        print(f"Using device: {self.device}")
         
+    # def download_pdf(self, pdf_url: str = "https://learn.microsoft.com/pdf?url=https%3A%2F%2Flearn.microsoft.com%2Fen-us%2Fazure%2Fopenshift%2Ftoc.json") -> str:
+    #     """Download the ARO documentation PDF"""
+    #     pdf_path = "aro_docs.pdf"
+        
+    #     if not os.path.exists(pdf_path):
+    #         print(f"Downloading PDF from {pdf_url}...")
+    #         try:
+    #             wget.download(pdf_url, pdf_path)
+    #             print("\nDownload complete!")
+    #         except Exception as e:
+    #             print(f"Error downloading PDF: {e}")
+    #             return None
+    #     else:
+    #         print("PDF file already exists.")
+        
+    #     return pdf_path
+
     def process_pdf(self, pdf_path: str) -> List[Any]:
         """Process PDF into document chunks"""
         try:
@@ -50,12 +67,11 @@ class HVACRAGSystem:
             
             print(f"Loaded {len(documents)} pages from PDF")
             
-            # Improved text splitting for Spanish content
             text_splitter = RecursiveCharacterTextSplitter(
-                chunk_size=512,  # Increased chunk size for better context
-                chunk_overlap=128,  # Better overlap for context preservation
+                chunk_size=200,
+                chunk_overlap=50,
                 length_function=len,
-                separators=['\n\n', '\n', '. ', '! ', '? ', '; ', ', ', ' ', ''],
+                separators=['\n\n', '\n', '. ', '! ', '? ', ', ', ' ', ''],
                 is_separator_regex=False
             )
             
@@ -66,12 +82,11 @@ class HVACRAGSystem:
             return []
 
     def create_vectorstore_from_chunks(self, embedding_model: str = "sentence-transformers/all-MiniLM-L6-v2") -> FAISS:
-        """Create vector store with better multilingual embeddings"""
+        """Create vector store from document chunks"""
         try:
-            # Better embedding model for Spanish/multilingual content
             embeddings = HuggingFaceEmbeddings(
                 model_name=embedding_model,
-                model_kwargs={'device': self.device},
+                model_kwargs={'device': 'cuda'},
                 encode_kwargs={'normalize_embeddings': True}
             )
             
@@ -86,9 +101,7 @@ class HVACRAGSystem:
                     documents.append(doc)
             
             vectorstore = FAISS.from_documents(documents, embeddings)
-            # Save the vectorstore for future use
-            vectorstore.save_local(self.index_path)
-            print("Vector store created and saved successfully.")
+            print("Vector store created successfully.")
             return vectorstore
         except Exception as e:
             print(f"Error creating vector store: {e}")
@@ -96,13 +109,7 @@ class HVACRAGSystem:
 
     def load_or_create_vectorstore(self) -> FAISS:
         """Load existing vector store or create new one"""
-        embedding_model = "sentence-transformers/all-MiniLM-L6-v2"  # Verified working model
-        embeddings = HuggingFaceEmbeddings(
-            model_name=embedding_model,
-            model_kwargs={'device': self.device},
-            encode_kwargs={'normalize_embeddings': True}
-        )
-        
+        embeddings = HuggingFaceEmbeddings()
         if os.path.exists(self.index_path):
             print("Loading precomputed vector store...")
             try:
@@ -110,81 +117,38 @@ class HVACRAGSystem:
             except Exception as e:
                 print(f"Error loading vector store: {e}")
                 print("Creating new vector store...")
-                return self.create_vectorstore_from_chunks(embedding_model)
+                return self.create_vectorstore_from_chunks()
         else:
             print("Vector store not found. Creating a new one...")
-            return self.create_vectorstore_from_chunks(embedding_model)
+            return self.create_vectorstore_from_chunks()
 
-    def setup_primary_model(self) -> HuggingFacePipeline:
-        """Set up primary model - Verified working models"""
+    def setup_model(self) -> HuggingFacePipeline:
+        """Set up the language model"""
         try:
-            # Option 1: For GPU with enough VRAM (>= 6GB)
-            if self.device == "cuda" and torch.cuda.get_device_properties(0).total_memory > 6e9:
-                # Use microsoft/DialoGPT-large (verified to exist)
-                model_name = "microsoft/DialoGPT-large"
-                
-                print(f'Loading tokenizer for {model_name}...')
-                tokenizer = AutoTokenizer.from_pretrained(model_name, use_safetensors=True)
-                tokenizer.pad_token = tokenizer.eos_token
-                
-                print('Loading model with optimization...')
-                model = AutoModelForCausalLM.from_pretrained(
-                    model_name,
-                    device_map="auto",
-                    torch_dtype=torch.float16,
-                    low_cpu_mem_usage=True,
-                    use_safetensors=True
-                )
-                
-                pipe = pipeline(
-                    'text-generation',
-                    model=model,
-                    tokenizer=tokenizer,
-                    max_new_tokens=256,
-                    temperature=0.7,
-                    top_p=0.9,
-                    repetition_penalty=1.1,
-                    do_sample=True,
-                    pad_token_id=tokenizer.eos_token_id,
-                    eos_token_id=tokenizer.eos_token_id,
-                    return_full_text=False
-                )
-                
-                return HuggingFacePipeline(pipeline=pipe)
-            else:
-                # Fallback to CPU-friendly model
-                return self.setup_cpu_optimized_model()
-                
-        except Exception as e:
-            print(f"Primary model setup failed: {str(e)}")
-            return self.setup_cpu_optimized_model()
-
-    def setup_cpu_optimized_model(self) -> HuggingFacePipeline:
-        """Set up CPU-optimized model with verified working models"""
-        try:
-            # Use microsoft/DialoGPT-small (verified and CPU-friendly)
-            model_name = "microsoft/DialoGPT-small"
+            model_name = "microsoft/DialoGPT-large"
             
-            print(f"Using CPU-optimized model: {model_name}")
-            
+            print('Loading tokenizer...')
             tokenizer = AutoTokenizer.from_pretrained(model_name)
             tokenizer.pad_token = tokenizer.eos_token
             
+            print('Loading model...')
             model = AutoModelForCausalLM.from_pretrained(
                 model_name,
-                device_map="cpu",
+                device_map="cuda",
                 torch_dtype=torch.float32,
-                low_cpu_mem_usage=True
+                low_cpu_mem_usage=True,
+                use_safetensors=True
             )
             
+            print('Setting up pipeline...')
             pipe = pipeline(
                 'text-generation',
                 model=model,
                 tokenizer=tokenizer,
-                max_new_tokens=200,
-                temperature=0.7,
-                top_p=0.9,
-                repetition_penalty=1.1,
+                max_new_tokens=128,
+                temperature=0.3,
+                top_p=0.95,
+                repetition_penalty=1.15,
                 do_sample=True,
                 pad_token_id=tokenizer.eos_token_id,
                 eos_token_id=tokenizer.eos_token_id,
@@ -192,23 +156,22 @@ class HVACRAGSystem:
             )
             
             return HuggingFacePipeline(pipeline=pipe)
-            
         except Exception as e:
-            print(f"CPU model setup failed: {str(e)}")
+            print(f"Primary model setup failed: {str(e)}")
             return self.setup_fallback_model()
 
     def setup_fallback_model(self) -> HuggingFacePipeline:
-        """Fallback to the most reliable model - GPT-2 (guaranteed to work)"""
+        """Set up fallback model (GPT-2)"""
         try:
-            print("Using fallback model: GPT-2")
-            model_name = "gpt2"  # Most reliable, always available
+            print("\nUsing fallback model: GPT-2")
+            model_name = "gpt2"
             
             tokenizer = AutoTokenizer.from_pretrained(model_name)
             tokenizer.pad_token = tokenizer.eos_token
             
             model = AutoModelForCausalLM.from_pretrained(
                 model_name,
-                device_map="cpu",
+                device_map="cuda",
                 torch_dtype=torch.float32
             )
             
@@ -216,10 +179,10 @@ class HVACRAGSystem:
                 'text-generation',
                 model=model,
                 tokenizer=tokenizer,
-                max_new_tokens=256,
-                temperature=0.7,
-                top_p=0.9,
-                repetition_penalty=1.1,
+                max_new_tokens=512,
+                temperature=0.3,
+                top_p=0.95,
+                repetition_penalty=1.15,
                 do_sample=True,
                 pad_token_id=tokenizer.eos_token_id,
                 eos_token_id=tokenizer.eos_token_id,
@@ -227,38 +190,20 @@ class HVACRAGSystem:
             )
             
             return HuggingFacePipeline(pipeline=pipe)
-            
         except Exception as e:
-            print(f"All model setups failed: {str(e)}")
-            raise Exception("Unable to load any model")
-
-    def setup_model(self) -> HuggingFacePipeline:
-        """Set up the best available language model"""
-        print("Setting up language model...")
-        
-        # Try models in order of preference
-        try:
-            return self.setup_primary_model()
-        except Exception as e:
-            print(f"Primary model failed, trying CPU-optimized: {e}")
-            try:
-                return self.setup_cpu_optimized_model()
-            except Exception as e2:
-                print(f"CPU model failed, using fallback: {e2}")
-                return self.setup_fallback_model()
+            print(f"Fallback model setup failed: {str(e)}")
+            raise
 
     def classify_question(self, question: str) -> str:
         """Classify question type for appropriate prompt selection"""
         question_lower = question.lower()
         
         patterns = {
-            'greeting': r'hola|buenos|buenas|saludos|como estas|que tal',
-            'benefits': r'beneficios|ventajas|porqué|valor|precio|bueno|mejor|óptimo|razón|costo',
-            'architecture': r'arquitecto|estructura|componente|diseño|construido|trabajo|infraestructura|diagrama|instalación',
-            'features': r'característica|capacidad|habilidad|poder|función|hacer|ofertas|especificaciones',
-            'technical': r'cómo|implementación|configuración|instalar|configurar|reparar|mantenimiento|problema|falla',
-            'comparison': r'comparar|versus|vs|diferencia|mejor|que|cuál',
-            'sizing': r'tamaño|dimensión|capacidad|potencia|btu|tonelada|metro|cuarto|espacio',
+            'benefits': r'beneficios|ventajas|porqué|valor|precio|bueno|mejor|óptimo|razón',
+            'architecture': r'arquitecto|estructura|componente|diseño|construido|trabajo|infraestructura|diagrama|plantilla',
+            'features': r'característica|capacidad|habilidad|poder|función|hacer|ofertas',
+            'technical': r'cómo|implementación|configuración|instalar|configurar|desplegar|solución|depurar',
+            'comparison': r'comparar|versus|vs|differencia|mejor|que',
         }
         
         for q_type, pattern in patterns.items():
@@ -268,41 +213,31 @@ class HVACRAGSystem:
         return 'general'
 
     def get_prompt_template(self, question_type: str) -> str:
-        """Get improved prompt template based on question type - Fixed for LangChain"""
-        base_context = """Eres un especialista en sistemas HVAC (calefacción, ventilación y aire acondicionado) con amplia experiencia en refrigeración comercial y residencial.
+        """Get appropriate prompt template based on question type"""
+        base_template = """Eres un asistente de IA especializado en refrigeración. Puedes manejar preguntas técnicas asi como conversación casual.
 
-Responde de manera profesional, clara y útil basándote en el contexto proporcionado. Si la información específica no está disponible, utiliza tu conocimiento general de HVAC.
+Para preguntas tecnicas acerca de refrigeración, usa el contexto provisto para responder adecuadamente. Si la información no se encuentra en el contexto, di "No tengo suficiente información para responder correctamente."
 
-Para consultas técnicas, haz preguntas de seguimiento sobre:
-- Tamaño del espacio (metros cuadrados/cúbicos)
-- Tipo de aplicación (residencial/comercial/industrial)  
-- Condiciones ambientales
-- Presupuesto aproximado
-- Eficiencia energética requerida
+Para conversación casual (saludos, charla, etc.), responde naturalmente, luego guía gentilmente la conversación hacia el tema de refrigeración.
 
-Contexto: {context}
+Haz preguntas para guiar la conversación hacia la refrigeración. Cuando pregunten por recomendaciones o sugerencias, haz preguntas acerca del caso del usuario y pide especificaciones.
+Cuando no tengas suficientes detalles, pregunta por información pertinente para hacer una sugerencia. Pregunta por el tamaño del cuarto, la potencia deseada, la capacidad del cuarto.
+Enfocate en hacer preguntas.
+
+Contexto:
+{context}
 
 Pregunta: {question}
 
-Respuesta profesional:"""
-
+Respuesta:"""
+        
         templates = {
-            'greeting': """Eres un especialista amigable en sistemas HVAC. Saluda cordialmente y ofrece ayuda con refrigeración y climatización.
-
-Contexto: {context}
-Pregunta: {question}
-
-Respuesta amigable:""",
-            
-            'benefits': base_context + "\n\nEnfócate en ventajas económicas, eficiencia energética y beneficios a largo plazo.",
-            
-            'technical': base_context + "\n\nProporciona detalles técnicos específicos, procedimientos y mejores prácticas.",
-            
-            'sizing': base_context + "\n\nEnfócate en cálculos de carga térmica, dimensionamiento y recomendaciones específicas. Pregunta por dimensiones del espacio.",
-            
-            'comparison': base_context + "\n\nCompara objetivamente las opciones, destacando pros y contras de cada una.",
-            
-            'general': base_context
+            'general': base_template,
+            'benefits': base_template + "\nEnfocate en las ventajas y el valor del negocio.",
+            'technical': base_template + "\nEnfocate en detalles técnicos y la implementación.",
+            'architecture': base_template + "\nEnfocate en componenetes del sistema y estructura.",
+            'features': base_template + "\nEnfocate en capacidades y funcionalidades.",
+            'comparison': base_template + "\nEnfocate en comparar elementos especificos."
         }
         
         return templates.get(question_type, templates['general'])
@@ -317,13 +252,9 @@ Respuesta amigable:""",
             input_variables=['context', 'question']
         )
         
-        # Improved retriever settings
         retriever = self.vectorstore.as_retriever(
             search_type='similarity',
-            search_kwargs={
-                'k': 5,  # Retrieve more documents for better context
-                'fetch_k': 10  # Consider more documents in initial search
-            }
+            search_kwargs={'k': 3}
         )
         
         qa_chain = RetrievalQA.from_chain_type(
@@ -339,154 +270,227 @@ Respuesta amigable:""",
         
         return qa_chain
 
+    def preprocess_question(self, question: str) -> str:
+        """Preprocess user question"""
+        question = question.strip()
+        question = ' '.join(question.split())       
+        if not question.endswith('?'):
+            question += '?'
+        return question
+
     def clean_response(self, response_text: str) -> str:
-        """Enhanced response cleaning"""
+        """Clean the response text to remove unwanted patterns"""
+        # Remove common patterns that appear in generated text
         patterns_to_remove = [
-            r'Pregunta:.*$',
-            r'Respuesta:.*$', 
-            r'Usuario:.*$',
-            r'Asistente:.*$',
-            r'Contexto del documento:.*$',
-            r'\n\n.*Pregunta.*',
-            r'\n\n.*Respuesta.*',
-            r'\n\n.*Contexto.*',
-            r'Human:.*$',
-            r'Assistant:.*$',
+            r'Pregunta:.*$',  # Remove "Pregunta:" and everything after
+            r'Respuesta:.*$',  # Remove "Respuesta:" and everything after  
+            r'Usuario:.*$',    # Remove "Usuario:" and everything after
+            r'\n\n.*Pregunta.*',  # Remove paragraphs starting with "Pregunta"
+            r'\n\n.*Respuesta.*', # Remove paragraphs starting with "Respuesta"
+
+            r'Conversación:.*$',  # Remove "Pregunta:" and everything after
+            r'Asistente:.*$',  # Remove "Respuesta:" and everything after  
+            r'\n\n.*Conversación.*',  # Remove paragraphs starting with "Pregunta"
+            r'\n\n.*Asistente.*', # Remove paragraphs starting with "Respuesta"
+
         ]
         
         cleaned_text = response_text
         for pattern in patterns_to_remove:
             cleaned_text = re.sub(pattern, '', cleaned_text, flags=re.MULTILINE | re.DOTALL)
         
-        # Enhanced cleanup
-        cleaned_text = re.sub(r'\n\s*\n\s*\n', '\n\n', cleaned_text)  # Remove multiple empty lines
-        cleaned_text = re.sub(r'^\s*[\-\*\•]\s*', '', cleaned_text, flags=re.MULTILINE)  # Remove bullet points at start
+        # Clean up extra whitespace
+        cleaned_text = re.sub(r'\n\s*\n', '\n\n', cleaned_text)  # Remove multiple empty lines
         cleaned_text = cleaned_text.strip()
         
         return cleaned_text
 
     def format_response(self, result: Dict[str, Any]) -> str:
-        """Format response for WhatsApp"""
+        """Format response for terminal display"""
         try:
-            response_text = result.get('result', 'No se pudo generar una respuesta.')
+            response_text = result.get('result', 'No response text available')
+
+            # Clean the response text
             cleaned_response = self.clean_response(response_text)
+            print("############", cleaned_response)
             
-            # Limit response length for WhatsApp
-            if len(cleaned_response) > 1500:
-                cleaned_response = cleaned_response[:1500] + "...\n\nPregunta más específica para obtener información detallada."
+            sources = []
             
-            return cleaned_response
+            source_docs = result.get('source_documents', [])
+            for doc in source_docs:
+                if hasattr(doc, 'metadata'):
+                    source = doc.metadata.get('source', 'Unknown source')
+                    sources.append(f"  - {source}")
+                elif isinstance(doc, dict):
+                    source = doc.get('metadata', {}).get('source', 'Unknown source')
+                    sources.append(f"  - {source}")
+
+            formatted_response = f"\n{'='*60}\nRESPUESTA:\n{'='*60}\n"
+            formatted_response += f"{cleaned_response}\n"
+            # formatted_response += f"\n{'='*60}\nSOURCES:\n{'='*60}\n"
+            # formatted_response += '\n'.join(sources) if sources else 'No sources available'
+            formatted_response += f"\n{'='*60}\n"
+            
+            return formatted_response
+        except Exception as e:
+            return f"Error formatting response: {str(e)}"
+
+    def initialize_system(self):
+        """Initialize the RAG system"""
+        try:
+            print("Starting RAG system initialization...")
+            
+            # Create chunks directory if it doesn't exist
+            if not os.path.exists(self.chunk_dir):
+                print("Creating chunks directory...")
+                os.makedirs(self.chunk_dir)
+
+                print("Downloading and processing PDF...")
+                pdf_path = "catalog.pdf"#self.download_pdf()
+                if not pdf_path:
+                    return False
+                
+                chunks = self.process_pdf(pdf_path)
+                if not chunks:
+                    return False
+                    
+                print(f"Created {len(chunks)} document chunks")
+
+                print("Saving chunks to files...")
+                for i, chunk in enumerate(chunks):
+                    chunk_file = os.path.join(self.chunk_dir, f"chunk_{i:04d}.txt")
+                    with open(chunk_file, "w", encoding="utf-8") as f:
+                        f.write(chunk.page_content)
+            
+            print("Loading vector store...")
+            self.vectorstore = self.load_or_create_vectorstore()
+            if not self.vectorstore:
+                return False
+            
+            print("Setting up language model...")
+            self.llm = self.setup_model()
+            if not self.llm:
+                return False
+            
+            print("RAG system initialized successfully!")
+            return True
             
         except Exception as e:
-            return f"Error al procesar la respuesta: {str(e)}"
-
-    def preprocess_question(self, question: str) -> str:
-        """Enhanced question preprocessing"""
-        question = question.strip()
-        question = ' '.join(question.split())
-        
-        # Handle common abbreviations
-        abbreviation_map = {
-            'hvac': 'calefacción ventilación aire acondicionado',
-            'a/c': 'aire acondicionado',
-            'btu': 'unidad térmica británica',
-        }
-        
-        question_lower = question.lower()
-        for abbr, full_form in abbreviation_map.items():
-            question_lower = question_lower.replace(abbr, full_form)
-        
-        return question_lower
+            print(f"Error initializing RAG system: {str(e)}")
+            return False
 
     def ask_question(self, question: str) -> str:
-        """Process question and return response"""
+        """Ask a question and get response"""
+        print("HERE IS A QUESTION")
         try:
             processed_question = self.preprocess_question(question)
             chain = self.get_chain_for_question(processed_question)
             result = chain.invoke({"query": processed_question})
             return self.format_response(result)
         except Exception as e:
-            return f"Error procesando pregunta: {str(e)}"
+            return f"Error processing question: {str(e)}"
 
-    def initialize_system(self):
-        """Initialize the RAG system"""
-        try:
-            print("Inicializando sistema HVAC RAG...")
-            
-            # Create chunks directory if needed
-            if not os.path.exists(self.chunk_dir):
-                print("Creando directorio de chunks...")
-                os.makedirs(self.chunk_dir)
+    def run_interactive_mode(self):
+        """Run interactive Q&A session"""
+        print("\n" + "="*60)
+        print("Chatbot HVAC")
+        print("="*60)
+        print("Haz preguntas de refrigeración")
+        print("Escribe 'quit' o 'exit' para salir")
+        print("="*60)
+        
+        while True:
+            try:
+                question = input("\nIntroduce la pregunta: ").strip()
                 
-                pdf_path = "catalog.pdf"
-                if os.path.exists(pdf_path):
-                    chunks = self.process_pdf(pdf_path)
-                    if chunks:
-                        print(f"Creados {len(chunks)} chunks de documentos")
-                        for i, chunk in enumerate(chunks):
-                            chunk_file = os.path.join(self.chunk_dir, f"chunk_{i:04d}.txt")
-                            with open(chunk_file, "w", encoding="utf-8") as f:
-                                f.write(chunk.page_content)
-            
-            print("Cargando vector store...")
-            self.vectorstore = self.load_or_create_vectorstore()
-            if not self.vectorstore:
-                return False
-            
-            print("Configurando modelo de lenguaje...")
-            self.llm = self.setup_model()
-            if not self.llm:
-                return False
-            
-            print("Sistema RAG inicializado exitosamente!")
-            return True
-            
-        except Exception as e:
-            print(f"Error inicializando sistema RAG: {str(e)}")
-            return False
+                if question.lower() in ['quit', 'exit', 'q']:
+                    print("Adiós!")
+                    break
+                elif question.lower() == 'help':
+                    self.show_help()
+                    continue
+                elif not question:
+                    print("Por favor introduce una pregunta.")
+                    continue
+                
+                print("\nProcesando pregunta...")
+                response = self.ask_question(question)
+                print(response)
+                
+            except KeyboardInterrupt:
+                print("\n\nTerminando...")
+                break
+            except Exception as e:
+                print(f"Error: {str(e)}")
+
+    def show_help(self):
+        """Show help information"""
+        help_text = """
+        Chatbot HVAC
+        ==================
+        
+        Este sistema responde preguntas acerca de sistemas de refrigeración.
+        """
+        print(help_text)
 
 
-# Flask app setup
+# def main():
+#     """Main function"""
+#     if len(sys.argv) > 1:
+#         if sys.argv[1] in ['-h', '--help']:
+#             print("""
+#             Chatbot HVAC
+#             ===============================
+            
+#             Usage:
+#                 python main.py                    # Interactive mode
+#                 python main.py -h, --help         # Show help
+            
+#             Este sistema responde preguntas acerca de sistemas de refrigeración.
+#             """)
+#             return
+    
+#     # Initialize the system
+#     rag_system = ARORAGSystem()
+    
+#     print("Initializing HVAC RAG System...")
+#     if not rag_system.initialize_system():
+#         print("Failed to initialize system. Exiting.")
+#         return
+    
+#     # Start interactive mode
+#     rag_system.run_interactive_mode()
+
+def main():
+    print("Running HVAC WhatsApp chatbot on Twilio webhook...")
+    app.run(host="0.0.0.0", port=3000, debug=debug)
+
+
 app = Flask(__name__)
-rag_system = HVACRAGSystem()
+rag_system = ARORAGSystem()
 rag_system.initialize_system()
+initialized = True
 
 @app.route("/webhook", methods=["POST"])
 def whatsapp_webhook():
-    """Handle WhatsApp webhook"""
+    global initialized
+
     incoming_msg = request.values.get("Body", "").strip()
     response = MessagingResponse()
 
-    if incoming_msg.lower() in ['quit', 'exit', 'salir', 'adios']:
-        response.message("Sesión terminada. ¡Gracias por usar nuestro chatbot HVAC! Escribe cualquier cosa para comenzar de nuevo.")
-    elif not incoming_msg:
-        response.message("Por favor, envía una pregunta sobre sistemas HVAC o refrigeración.")
+    #if not initialized:
+    #    if not rag_system.initialize_system():
+    #        response.message("Error initializing system.")
+    #        return str(response)
+    #    initialized = True
+
+    if incoming_msg.lower() in ['quit', 'exit', 'q']:
+        response.message("Sesión terminada. Escribe cualquier cosa para comenzar de nuevo.")
     else:
-        try:
-            reply = rag_system.ask_question(incoming_msg)
-            response.message(reply)
-        except Exception as e:
-            response.message("Disculpa, hubo un error procesando tu pregunta. Por favor intenta de nuevo.")
-            print(f"Error in webhook: {e}")
+        reply = rag_system.ask_question(incoming_msg)
+        response.message(reply)
 
     return str(response)
-
-@app.route("/health", methods=["GET"])
-def health_check():
-    """Health check endpoint"""
-    return {"status": "healthy", "model_loaded": rag_system.llm is not None}
-
-def main():
-    """Main function"""
-    print("Iniciando chatbot HVAC WhatsApp con Twilio...")
-    
-    # Initialize system
-    if not rag_system.initialize_system():
-        print("Error: No se pudo inicializar el sistema.")
-        return
-    
-    # Start Flask app
-    app.run(host="0.0.0.0", port=int(os.getenv("PORT", 3000)), debug=debug)
 
 if __name__ == "__main__":
     main()
