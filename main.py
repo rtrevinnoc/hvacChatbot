@@ -86,7 +86,7 @@ class ARORAGSystem:
         try:
             embeddings = HuggingFaceEmbeddings(
                 model_name=embedding_model,
-                model_kwargs={'device': 'cuda'},
+                model_kwargs={'device': 'cpu'},
                 encode_kwargs={'normalize_embeddings': True}
             )
             
@@ -125,7 +125,7 @@ class ARORAGSystem:
     def setup_model(self) -> HuggingFacePipeline:
         """Set up the language model"""
         try:
-            model_name = "microsoft/DialoGPT-large"
+            model_name = "TinyLlama/TinyLlama-1.1B-Chat-v1.0"
             
             print('Loading tokenizer...')
             tokenizer = AutoTokenizer.from_pretrained(model_name)
@@ -134,10 +134,9 @@ class ARORAGSystem:
             print('Loading model...')
             model = AutoModelForCausalLM.from_pretrained(
                 model_name,
-                device_map="cuda",
+                device_map="cpu",
                 torch_dtype=torch.float32,
-                low_cpu_mem_usage=True,
-                use_safetensors=True
+                low_cpu_mem_usage=True
             )
             
             print('Setting up pipeline...')
@@ -171,7 +170,7 @@ class ARORAGSystem:
             
             model = AutoModelForCausalLM.from_pretrained(
                 model_name,
-                device_map="cuda",
+                device_map="cpu",
                 torch_dtype=torch.float32
             )
             
