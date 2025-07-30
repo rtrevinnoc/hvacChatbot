@@ -86,7 +86,7 @@ class ARORAGSystem:
         try:
             embeddings = HuggingFaceEmbeddings(
                 model_name=embedding_model,
-                model_kwargs={'device': 'cpu'},
+                model_kwargs={'device': 'cuda'},
                 encode_kwargs={'normalize_embeddings': True}
             )
             
@@ -134,7 +134,7 @@ class ARORAGSystem:
             print('Loading model...')
             model = AutoModelForCausalLM.from_pretrained(
                 model_name,
-                device_map="cpu",
+                device_map="cuda",
                 torch_dtype=torch.float32,
                 low_cpu_mem_usage=True
             )
@@ -170,7 +170,7 @@ class ARORAGSystem:
             
             model = AutoModelForCausalLM.from_pretrained(
                 model_name,
-                device_map="cpu",
+                device_map="cuda",
                 torch_dtype=torch.float32
             )
             
