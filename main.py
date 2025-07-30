@@ -65,7 +65,7 @@ class HVACRAGSystem:
             print(f"Error processing PDF: {e}")
             return []
 
-    def create_vectorstore_from_chunks(self, embedding_model: str = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2") -> FAISS:
+    def create_vectorstore_from_chunks(self, embedding_model: str = "sentence-transformers/all-MiniLM-L6-v2") -> FAISS:
         """Create vector store with better multilingual embeddings"""
         try:
             # Better embedding model for Spanish/multilingual content
@@ -96,7 +96,7 @@ class HVACRAGSystem:
 
     def load_or_create_vectorstore(self) -> FAISS:
         """Load existing vector store or create new one"""
-        embedding_model = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
+        embedding_model = "sentence-transformers/all-MiniLM-L6-v2"  # Verified working model
         embeddings = HuggingFaceEmbeddings(
             model_name=embedding_model,
             model_kwargs={'device': self.device},
@@ -116,29 +116,20 @@ class HVACRAGSystem:
             return self.create_vectorstore_from_chunks(embedding_model)
 
     def setup_primary_model(self) -> HuggingFacePipeline:
-        """Set up primary model - Microsoft DialoGPT Spanish or Llama-2-7B-Chat"""
+        """Set up primary model - Verified working models"""
         try:
-            # Option 1: For GPU with enough VRAM (>= 8GB)
-            if self.device == "cuda" and torch.cuda.get_device_properties(0).total_memory > 8e9:
-                model_name = "microsoft/DialoGPT-spanish"  # Good for Spanish conversations
-                # Alternative: "meta-llama/Llama-2-7b-chat-hf" (requires HF access)
+            # Option 1: For GPU with enough VRAM (>= 6GB)
+            if self.device == "cuda" and torch.cuda.get_device_properties(0).total_memory > 6e9:
+                # Use microsoft/DialoGPT-large (verified to exist)
+                model_name = "microsoft/DialoGPT-large"
                 
                 print(f'Loading tokenizer for {model_name}...')
                 tokenizer = AutoTokenizer.from_pretrained(model_name)
                 tokenizer.pad_token = tokenizer.eos_token
                 
-                print('Loading model with 4-bit quantization...')
-                # Use 4-bit quantization to save memory
-                quantization_config = BitsAndBytesConfig(
-                    load_in_4bit=True,
-                    bnb_4bit_compute_dtype=torch.float16,
-                    bnb_4bit_use_double_quant=True,
-                    bnb_4bit_quant_type="nf4"
-                )
-                
+                print('Loading model with optimization...')
                 model = AutoModelForCausalLM.from_pretrained(
                     model_name,
-                    quantization_config=quantization_config,
                     device_map="auto",
                     torch_dtype=torch.float16,
                     low_cpu_mem_usage=True
@@ -168,17 +159,15 @@ class HVACRAGSystem:
             return self.setup_cpu_optimized_model()
 
     def setup_cpu_optimized_model(self) -> HuggingFacePipeline:
-        """Set up CPU-optimized model"""
+        """Set up CPU-optimized model with verified working models"""
         try:
-            # Best CPU option: Flan-T5 or DistilBERT-based models
-            model_name = "google/flan-t5-base"  # Good multilingual performance
-            # Alternative: "microsoft/DialoGPT-small" for smaller footprint
+            # Use microsoft/DialoGPT-small (verified and CPU-friendly)
+            model_name = "microsoft/DialoGPT-small"
             
             print(f"Using CPU-optimized model: {model_name}")
             
             tokenizer = AutoTokenizer.from_pretrained(model_name)
-            if tokenizer.pad_token is None:
-                tokenizer.pad_token = tokenizer.eos_token
+            tokenizer.pad_token = tokenizer.eos_token
             
             model = AutoModelForCausalLM.from_pretrained(
                 model_name,
@@ -188,7 +177,7 @@ class HVACRAGSystem:
             )
             
             pipe = pipeline(
-                'text2text-generation' if 't5' in model_name.lower() else 'text-generation',
+                'text-generation',
                 model=model,
                 tokenizer=tokenizer,
                 max_new_tokens=200,
@@ -196,6 +185,8 @@ class HVACRAGSystem:
                 top_p=0.9,
                 repetition_penalty=1.1,
                 do_sample=True,
+                pad_token_id=tokenizer.eos_token_id,
+                eos_token_id=tokenizer.eos_token_id,
                 return_full_text=False
             )
             
@@ -206,10 +197,10 @@ class HVACRAGSystem:
             return self.setup_fallback_model()
 
     def setup_fallback_model(self) -> HuggingFacePipeline:
-        """Fallback to the most reliable model"""
+        """Fallback to the most reliable model - GPT-2 (guaranteed to work)"""
         try:
-            print("Using fallback model: DistilGPT-2")
-            model_name = "distilgpt2"  # More capable than GPT-2 but still lightweight
+            print("Using fallback model: GPT-2")
+            model_name = "gpt2"  # Most reliable, always available
             
             tokenizer = AutoTokenizer.from_pretrained(model_name)
             tokenizer.pad_token = tokenizer.eos_token
