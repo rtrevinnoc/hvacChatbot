@@ -268,11 +268,10 @@ class HVACRAGSystem:
         return 'general'
 
     def get_prompt_template(self, question_type: str) -> str:
-        """Get improved prompt template based on question type"""
-        base_context = """
-Eres un especialista en sistemas HVAC (calefacción, ventilación y aire acondicionado) con amplia experiencia en refrigeración comercial y residencial.
+        """Get improved prompt template based on question type - Fixed for LangChain"""
+        base_context = """Eres un especialista en sistemas HVAC (calefacción, ventilación y aire acondicionado) con amplia experiencia en refrigeración comercial y residencial.
 
-Responde de manera profesional, clara y útil. Si la información específica no está en el contexto proporcionado, utiliza tu conocimiento general de HVAC pero indica cuando estás usando conocimiento general vs. información del documento.
+Responde de manera profesional, clara y útil basándote en el contexto proporcionado. Si la información específica no está disponible, utiliza tu conocimiento general de HVAC.
 
 Para consultas técnicas, haz preguntas de seguimiento sobre:
 - Tamaño del espacio (metros cuadrados/cúbicos)
@@ -281,17 +280,16 @@ Para consultas técnicas, haz preguntas de seguimiento sobre:
 - Presupuesto aproximado
 - Eficiencia energética requerida
 
-Contexto del documento:
-{context}
+Contexto: {context}
 
-Pregunta del usuario: {question}
+Pregunta: {question}
 
-Respuesta útil y profesional:"""
+Respuesta profesional:"""
 
         templates = {
-            'greeting': """
-Eres un especialista amigable en sistemas HVAC. Saluda cordialmente y ofrece ayuda.
+            'greeting': """Eres un especialista amigable en sistemas HVAC. Saluda cordialmente y ofrece ayuda con refrigeración y climatización.
 
+Contexto: {context}
 Pregunta: {question}
 
 Respuesta amigable:""",
