@@ -124,7 +124,7 @@ class HVACRAGSystem:
                 model_name = "microsoft/DialoGPT-large"
                 
                 print(f'Loading tokenizer for {model_name}...')
-                tokenizer = AutoTokenizer.from_pretrained(model_name)
+                tokenizer = AutoTokenizer.from_pretrained(model_name, use_safetensors=True)
                 tokenizer.pad_token = tokenizer.eos_token
                 
                 print('Loading model with optimization...')
@@ -132,7 +132,8 @@ class HVACRAGSystem:
                     model_name,
                     device_map="auto",
                     torch_dtype=torch.float16,
-                    low_cpu_mem_usage=True
+                    low_cpu_mem_usage=True,
+                    use_safetensors=True
                 )
                 
                 pipe = pipeline(
