@@ -324,11 +324,11 @@ Respuesta:"""
                     source = doc.get('metadata', {}).get('source', 'Unknown source')
                     sources.append(f"  - {source}")
 
-            formatted_response = f"\n{'='*60}\nRESPUESTA:\n{'='*60}\n"
-            formatted_response += f"{cleaned_response}\n"
+            # formatted_response = f"\n{'='*60}\nRESPUESTA:\n{'='*60}\n"
+            formatted_response = f"{cleaned_response}\n"
             # formatted_response += f"\n{'='*60}\nSOURCES:\n{'='*60}\n"
             # formatted_response += '\n'.join(sources) if sources else 'No sources available'
-            formatted_response += f"\n{'='*60}\n"
+            # formatted_response += f"\n{'='*60}\n"
             
             return formatted_response
         except Exception as e:
