@@ -459,11 +459,7 @@ Respuesta amigable:""",
 # Flask app setup
 app = Flask(__name__)
 rag_system = HVACRAGSystem()
-
-@app.before_first_request
-def initialize_system():
-    """Initialize the system before handling first request"""
-    rag_system.initialize_system()
+rag_system.initialize_system()
 
 @app.route("/webhook", methods=["POST"])
 def whatsapp_webhook():
