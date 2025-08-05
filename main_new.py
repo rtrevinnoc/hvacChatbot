@@ -172,7 +172,7 @@ class HVACRAGSystem:
             
             model = AutoModelForCausalLM.from_pretrained(
                 model_name,
-                device_map="cpu",
+                device_map="cuda",
                 torch_dtype=torch.float32,
                 low_cpu_mem_usage=True
             )
@@ -208,7 +208,7 @@ class HVACRAGSystem:
             
             model = AutoModelForCausalLM.from_pretrained(
                 model_name,
-                device_map="cpu",
+                device_map="cuda",
                 torch_dtype=torch.float32
             )
             
