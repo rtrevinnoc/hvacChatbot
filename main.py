@@ -116,15 +116,10 @@ class HVACRAGSystem:
     def setup_model(self) -> HuggingFacePipeline:
         """Set up a reliable model with proper configuration"""
         try:
-            # Use a simple, reliable model that works well for text generation
-            model_name = "microsoft/DialoGPT-large"
-            
+            model_name = "mistralai/Mistral-7B-Instruct-v0.2"  # Change to Flan-T5 large
             print(f"Loading model: {model_name}")
             
             tokenizer = AutoTokenizer.from_pretrained(model_name)
-            if tokenizer.pad_token is None:
-                tokenizer.pad_token = tokenizer.eos_token
-            
             model = AutoModelForCausalLM.from_pretrained(
                 model_name,
                 torch_dtype=torch.float16 if self.device == "cuda" else torch.float32,
@@ -132,21 +127,17 @@ class HVACRAGSystem:
                 low_cpu_mem_usage=True,
             )
             
-            # Configure pipeline with proper settings
             pipe = pipeline(
-                'text-generation',
+                'text2text-generation',  # <---- CHANGED from 'text-generation' to 'text2text-generation'
                 model=model,
                 tokenizer=tokenizer,
-                max_new_tokens=300,  # Increased for better responses
-                min_new_tokens=50,   # Ensure minimum response length
+                max_new_tokens=300,
                 temperature=0.8,
                 top_p=0.9,
                 top_k=50,
                 repetition_penalty=1.2,
                 do_sample=True,
-                pad_token_id=tokenizer.eos_token_id,
-                eos_token_id=tokenizer.eos_token_id,
-                return_full_text=False,  # Only return generated text
+                return_full_text=False,
                 clean_up_tokenization_spaces=True
             )
             
@@ -157,15 +148,11 @@ class HVACRAGSystem:
             return self.setup_fallback_model()
 
     def setup_fallback_model(self) -> HuggingFacePipeline:
-        """Fallback to GPT-2 with proper configuration"""
         try:
-            print("Using fallback model: GPT-2")
-            model_name = "gpt2-medium"  # Better than base GPT-2
+            print("Using fallback model: FLAN-T5-Base")
+            model_name = "google/flan-t5-base"
             
             tokenizer = AutoTokenizer.from_pretrained(model_name)
-            if tokenizer.pad_token is None:
-                tokenizer.pad_token = tokenizer.eos_token
-            
             model = AutoModelForCausalLM.from_pretrained(
                 model_name,
                 torch_dtype=torch.float16 if self.device == "cuda" else torch.float32,
@@ -173,24 +160,20 @@ class HVACRAGSystem:
             )
             
             pipe = pipeline(
-                'text-generation',
+                'text2text-generation',
                 model=model,
                 tokenizer=tokenizer,
                 max_new_tokens=300,
-                min_new_tokens=50,
                 temperature=0.8,
                 top_p=0.9,
                 top_k=50,
                 repetition_penalty=1.2,
                 do_sample=True,
-                pad_token_id=tokenizer.eos_token_id,
-                eos_token_id=tokenizer.eos_token_id,
                 return_full_text=False,
                 clean_up_tokenization_spaces=True
             )
             
             return HuggingFacePipeline(pipeline=pipe)
-            
         except Exception as e:
             print(f"All model setups failed: {str(e)}")
             raise Exception("Unable to load any model")
@@ -352,7 +335,7 @@ Respuesta sobre cálculos y dimensionamiento:""",
             
             # Create prompt
             prompt_template = self.get_prompt_template(question_type)
-            prompt = prompt_template.format(context=context, question=question)
+            prompt = f"Eres un asistente virtual con conocimiento de sistemas de refrigeración. Responde en español de manera clara y profesional.\n\n{prompt_template.format(context=context, question=question)}"
             
             # Generate response
             try:
