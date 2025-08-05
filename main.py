@@ -9,7 +9,7 @@ import sys
 import torch
 import re
 from typing import List, Any, Dict, Tuple
-from transformers import AutoTokenizer, pipeline, AutoModelForSeq2SeqLM
+from transformers import AutoTokenizer, pipeline, AutoModelForSeq2SeqLM, AutoModelForCausalLM
 from langchain_huggingface import HuggingFacePipeline, HuggingFaceEmbeddings
 from langchain_community.vectorstores import FAISS
 from langchain.chains import RetrievalQA
@@ -118,14 +118,15 @@ class HVACRAGSystem:
             model_name = "tiiuae/falcon-7b"  # or your preferred model
             print(f"Loading model: {model_name}")
             tokenizer = AutoTokenizer.from_pretrained(model_name)
-            model = AutoModelForSeq2SeqLM.from_pretrained(
+            model = AutoModelForCausalLM.from_pretrained(
                 model_name,
                 torch_dtype=torch.float16 if self.device == "cuda" else torch.float32,
                 device_map="auto" if self.device == "cuda" else None,
                 low_cpu_mem_usage=True,
             )
+
             pipe = pipeline(
-                'text2text-generation',
+                'text-generation',
                 model=model,
                 tokenizer=tokenizer,
                 max_new_tokens=300,
@@ -134,6 +135,8 @@ class HVACRAGSystem:
                 top_k=50,
                 repetition_penalty=1.2,
                 do_sample=True,
+                pad_token_id=tokenizer.eos_token_id,
+                eos_token_id=tokenizer.eos_token_id,
                 return_full_text=False,
                 clean_up_tokenization_spaces=True
             )
