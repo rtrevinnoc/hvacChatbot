@@ -9,7 +9,7 @@ import sys
 import torch
 import re
 from typing import List, Any, Dict, Tuple
-from transformers import AutoTokenizer, AutoModelForCausalLM, pipeline, BitsAndBytesConfig
+from transformers import AutoTokenizer, pipeline, AutoModelForSeq2SeqLM
 from langchain_huggingface import HuggingFacePipeline, HuggingFaceEmbeddings
 from langchain_community.vectorstores import FAISS
 from langchain.chains import RetrievalQA
@@ -114,51 +114,16 @@ class HVACRAGSystem:
             return self.create_vectorstore_from_chunks(embedding_model)
 
     def setup_model(self) -> HuggingFacePipeline:
-        """Set up a reliable model with proper configuration"""
         try:
-            model_name = "mistralai/Mistral-7B-Instruct-v0.2"  # Change to Flan-T5 large
+            model_name = "tiiuae/falcon-7b"  # or your preferred model
             print(f"Loading model: {model_name}")
-            
             tokenizer = AutoTokenizer.from_pretrained(model_name)
-            model = AutoModelForCausalLM.from_pretrained(
+            model = AutoModelForSeq2SeqLM.from_pretrained(
                 model_name,
                 torch_dtype=torch.float16 if self.device == "cuda" else torch.float32,
                 device_map="auto" if self.device == "cuda" else None,
                 low_cpu_mem_usage=True,
             )
-            
-            pipe = pipeline(
-                'text2text-generation',  # <---- CHANGED from 'text-generation' to 'text2text-generation'
-                model=model,
-                tokenizer=tokenizer,
-                max_new_tokens=300,
-                temperature=0.8,
-                top_p=0.9,
-                top_k=50,
-                repetition_penalty=1.2,
-                do_sample=True,
-                return_full_text=False,
-                clean_up_tokenization_spaces=True
-            )
-            
-            return HuggingFacePipeline(pipeline=pipe)
-            
-        except Exception as e:
-            print(f"Model setup failed: {str(e)}")
-            return self.setup_fallback_model()
-
-    def setup_fallback_model(self) -> HuggingFacePipeline:
-        try:
-            print("Using fallback model: FLAN-T5-Base")
-            model_name = "google/flan-t5-base"
-            
-            tokenizer = AutoTokenizer.from_pretrained(model_name)
-            model = AutoModelForCausalLM.from_pretrained(
-                model_name,
-                torch_dtype=torch.float16 if self.device == "cuda" else torch.float32,
-                device_map="auto" if self.device == "cuda" else None
-            )
-            
             pipe = pipeline(
                 'text2text-generation',
                 model=model,
@@ -172,7 +137,35 @@ class HVACRAGSystem:
                 return_full_text=False,
                 clean_up_tokenization_spaces=True
             )
-            
+            return HuggingFacePipeline(pipeline=pipe)
+        except Exception as e:
+            print(f"Model setup failed: {str(e)}")
+            return self.setup_fallback_model()
+
+
+    def setup_fallback_model(self) -> HuggingFacePipeline:
+        try:
+            print("Using fallback model: FLAN-T5-Base")
+            model_name = "google/flan-t5-base"
+            tokenizer = AutoTokenizer.from_pretrained(model_name)
+            model = AutoModelForSeq2SeqLM.from_pretrained(
+                model_name,
+                torch_dtype=torch.float16 if self.device == "cuda" else torch.float32,
+                device_map="auto" if self.device == "cuda" else None
+            )
+            pipe = pipeline(
+                'text2text-generation',
+                model=model,
+                tokenizer=tokenizer,
+                max_new_tokens=300,
+                temperature=0.8,
+                top_p=0.9,
+                top_k=50,
+                repetition_penalty=1.2,
+                do_sample=True,
+                return_full_text=False,
+                clean_up_tokenization_spaces=True
+            )
             return HuggingFacePipeline(pipeline=pipe)
         except Exception as e:
             print(f"All model setups failed: {str(e)}")
