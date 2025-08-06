@@ -8,6 +8,7 @@ from utils.vectordatabase import VectorDatabase
 from utils.openai_utils.chatmodel import ChatOpenAI
 import asyncio
 from dotenv import load_dotenv
+from asgiref.sync import async_to_sync
 load_dotenv()
 
 if not os.getenv("OPENAI_API_KEY"):
