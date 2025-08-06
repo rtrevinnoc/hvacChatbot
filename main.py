@@ -1,4 +1,5 @@
 import os
+import logging
 from flask import Flask, request, Response
 from twilio.twiml.messaging_response import MessagingResponse
 from utils.text_utils import CharacterTextSplitter, TextFileLoader, PDFLoader
@@ -103,4 +104,5 @@ def twilio_webhook():
 
 # --- Run Flask ---
 if __name__ == "__main__":
+    logging.basicConfig(level=logging.INFO)
     app.run(host="0.0.0.0", port=3000, debug=debug)
