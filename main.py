@@ -1,26 +1,21 @@
 import os
-import logging
-from flask import Flask, request, Response
+import asyncio
+from fastapi import FastAPI, Request
+from fastapi.responses import PlainTextResponse
 from twilio.twiml.messaging_response import MessagingResponse
 from utils.text_utils import CharacterTextSplitter, TextFileLoader, PDFLoader
 from utils.openai_utils.prompts import UserRolePrompt, SystemRolePrompt
-from utils.openai_utils.embedding import EmbeddingModel
 from utils.vectordatabase import VectorDatabase
 from utils.openai_utils.chatmodel import ChatOpenAI
-import asyncio
 from dotenv import load_dotenv
-from asgiref.sync import async_to_sync
+
 load_dotenv()
 
 if not os.getenv("OPENAI_API_KEY"):
     raise ValueError("OPENAI_API_KEY environment variable is not set")
 
-debug = os.getenv("DEBUG", "false").lower() in ("1", "true", "yes", "on")
+app = FastAPI()
 
-# Twilio Flask app
-app = Flask(__name__)
-
-# Spanish system prompt specific to HVAC and catalog-based answering
 system_template = """\
 Eres un asistente experto en sistemas de calefacción, ventilación y aire acondicionado. Utiliza la información del catálogo de productos para recomendar productos cuando sea necesario.
 
@@ -39,7 +34,9 @@ Pregunta:
 """
 user_role_prompt = UserRolePrompt(user_prompt_template)
 
-# RAG Pipeline Class
+vector_db = None  # global placeholder
+PDF_FILE_PATH = "catalog.pdf"
+
 class RetrievalAugmentedQAPipeline:
     def __init__(self, llm: ChatOpenAI, vector_db_retriever: VectorDatabase) -> None:
         self.llm = llm
@@ -47,7 +44,6 @@ class RetrievalAugmentedQAPipeline:
 
     async def arun_pipeline(self, user_query: str):
         context_list = self.vector_db_retriever.search_by_text(user_query, k=4)
-
         context_prompt = "\n".join([context[0] for context in context_list])
 
         formatted_system_prompt = system_role_prompt.create_message()
@@ -59,10 +55,8 @@ class RetrievalAugmentedQAPipeline:
 
         return ''.join(response_chunks)
 
-# Load PDF and Build Vector DB
-def prepare_vector_db(file_path):
+async def prepare_vector_db(file_path):
     print(f"Processing file: {file_path}")
-    
     if file_path.lower().endswith('.pdf'):
         loader = PDFLoader(file_path)
     else:
@@ -75,34 +69,26 @@ def prepare_vector_db(file_path):
     print(f"Loaded {len(texts)} text chunks")
 
     vector_db = VectorDatabase()
-    return asyncio.run(vector_db.abuild_from_list(texts))
+    await vector_db.abuild_from_list(texts)
+    return vector_db
 
-# --- Initialization ---
-PDF_FILE_PATH = "catalog.pdf"
-vector_db = prepare_vector_db(PDF_FILE_PATH)
-chat_openai = ChatOpenAI()
-qa_pipeline = RetrievalAugmentedQAPipeline(llm=chat_openai, vector_db_retriever=vector_db)
+@app.on_event("startup")
+async def startup_event():
+    global vector_db
+    vector_db = await prepare_vector_db(PDF_FILE_PATH)
+    print("Vector DB initialized")
 
-# --- Flask Twilio Webhook ---
-@app.route("/webhook", methods=["POST"])
-def twilio_webhook():
-    try:
-        incoming_msg = request.values.get('Body', '').strip()
-        response_text = async_to_sync(qa_pipeline.arun_pipeline)(incoming_msg)
+@app.post("/webhook")
+async def twilio_webhook(request: Request):
+    form = await request.form()
+    incoming_msg = form.get('Body', '').strip()
 
-        resp = MessagingResponse()
-        msg = resp.message()
-        msg.body(response_text)
+    async with ChatOpenAI() as chat_openai:
+        qa_pipeline = RetrievalAugmentedQAPipeline(llm=chat_openai, vector_db_retriever=vector_db)
+        response_text = await qa_pipeline.arun_pipeline(incoming_msg)
 
-        return Response(str(resp), mimetype="application/xml")
+    resp = MessagingResponse()
+    msg = resp.message()
+    msg.body(response_text)
 
-    except Exception as e:
-        print(f"Error handling webhook: {str(e)}")
-        resp = MessagingResponse()
-        resp.message("Lo siento, ocurrió un error procesando tu mensaje.")
-        return Response(str(resp), mimetype="application/xml")
-
-# --- Run Flask ---
-if __name__ == "__main__":
-    logging.basicConfig(level=logging.INFO)
-    app.run(host="0.0.0.0", port=3000, debug=debug)
+    return PlainTextResponse(content=str(resp), media_type="application/xml")
