@@ -12,6 +12,14 @@ class ChatOpenAI:
         if self.openai_api_key is None:
             raise ValueError("OPENAI_API_KEY is not set")
 
+    async def __aenter__(self):
+        self.async_client = AsyncOpenAI()
+        return self
+
+    async def __aexit__(self, exc_type, exc, tb):
+        if self.async_client is not None:
+            await self.async_client.close()
+
     def run(self, messages, text_only: bool = True, **kwargs):
         if not isinstance(messages, list):
             raise ValueError("messages must be a list")
