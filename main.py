@@ -84,17 +84,21 @@ qa_pipeline = RetrievalAugmentedQAPipeline(llm=chat_openai, vector_db_retriever=
 # --- Flask Twilio Webhook ---
 @app.route("/webhook", methods=["POST"])
 def twilio_webhook():
-    incoming_msg = request.values.get('Body', '').strip()
+    try:
+        incoming_msg = request.values.get('Body', '').strip()
+        response_text = async_to_sync(qa_pipeline.arun_pipeline)(incoming_msg)
 
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
-    response_text = loop.run_until_complete(qa_pipeline.arun_pipeline(incoming_msg))
+        resp = MessagingResponse()
+        msg = resp.message()
+        msg.body(response_text)
 
-    resp = MessagingResponse()
-    msg = resp.message()
-    msg.body(response_text)
+        return Response(str(resp), mimetype="application/xml")
 
-    return Response(str(resp), mimetype="application/xml")
+    except Exception as e:
+        print(f"Error handling webhook: {str(e)}")
+        resp = MessagingResponse()
+        resp.message("Lo siento, ocurrió un error procesando tu mensaje.")
+        return Response(str(resp), mimetype="application/xml")
 
 # --- Run Flask ---
 if __name__ == "__main__":
