@@ -38,9 +38,7 @@ class ChatOpenAI:
         if not isinstance(messages, list):
             raise ValueError("messages must be a list")
         
-        client = AsyncOpenAI()
-
-        stream = await client.chat.completions.create(
+        stream = await self.async_client.chat.completions.create(
             model=self.model_name,
             messages=messages,
             stream=True,
