@@ -119,11 +119,16 @@ async def twilio_webhook(request: Request):
     print("##########################")
     print(form)
     incoming_msg = form.get('Body', '').strip()
+    user_id = form.get("From")
     print(incoming_msg)
+    print(user_id)
 
     async with ChatOpenAI() as chat_openai:
-        qa_pipeline = RetrievalAugmentedQAPipeline(llm=chat_openai, vector_db_retriever=vector_db)
-        response_text = await qa_pipeline.arun_pipeline(incoming_msg)
+        qa_pipeline = RetrievalAugmentedQAPipeline(
+            llm=chat_openai,
+            vector_db_retriever=vector_db
+        )
+        response_text = await qa_pipeline.arun_pipeline(incoming_msg, user_id)
         print(response_text)
 
     resp = MessagingResponse()
